@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مسابقة رتل وارتق</title>
+<style>
+:root{--bg:#e9efea;--surface:#f7faf7;--ink:#183029;--muted:#5d746c;--green:#14463d;--brass:#b3862a;--line:#c3d3cb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1f1b;--surface:#16302a;--ink:#e8f1ec;--muted:#94afa5;--green:#5fc2a8;--brass:#e0b552;--line:#2d4d43}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Naskh Arabic","Amiri","Geeza Pro","Segoe UI",Tahoma,serif;line-height:1.7;padding:max(16px,env(safe-area-inset-top)) 16px 48px}
+.wrap{max-width:720px;margin:0 auto}
+.ban{display:block;width:100%;height:auto;border-radius:12px;margin:8px 0 18px}
+.gg{display:grid;gap:10px;margin-bottom:16px}
+.gb{display:block;text-align:center;text-decoration:none;color:var(--ink);background:var(--surface);font-size:1.25rem;padding:16px;border-radius:16px;border:2px solid var(--green);font-weight:700}
+.demo{background:#fbe3df;color:#b3352b;border-radius:10px;padding:6px 12px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap" id="home"></div>
+
+<!-- أدوات مشتركة: قاعدة البيانات + كلمة السر -->
+<script type="text/plain" id="dbsrc">
+const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const arr=x=>Array.isArray(x)?x:Object.values(x||{});
+const sk=n=>encodeURIComponent(n).replace(/\./g,'%2E');
+const h53=(s,seed=0)=>{let a=0xdeadbeef^seed,b=0x41c6ce57^seed;for(let i=0,c;i<s.length;i++){c=s.charCodeAt(i);a=Math.imul(a^c,2654435761);b=Math.imul(b^c,1597334677)}a=Math.imul(a^(a>>>16),2246822507)^Math.imul(b^(b>>>13),3266489909);b=Math.imul(b^(b>>>16),2246822507)^Math.imul(a^(a>>>13),3266489909);return 4294967296*(2097151&b)+(a>>>0)};
+const LS='rq-db';
+const lget=()=>{try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return{}}};
+async function dbGet(p){
+  if(FB_URL){const r=await fetch(FB_URL+'/'+p+'.json');if(!r.ok)throw new Error('net');return r.json()}
+  let o=lget();for(const k of p.split('/')){if(o==null||typeof o!=='object')return null;o=o[k]}
+  return o===undefined?null:o;
+}
+async function dbSet(p,v){
+  if(FB_URL){const r=await fetch(FB_URL+'/'+p+'.json',{method:'PUT',body:JSON.stringify(v)});if(!r.ok)throw new Error('net');return}
+  const root=lget(),ks=p.split('/');let o=root;
+  ks.slice(0,-1).forEach(k=>{if(typeof o[k]!=='object'||o[k]===null)o[k]={};o=o[k]});
+  if(v===null)delete o[ks[ks.length-1]];else o[ks[ks.length-1]]=v;
+  localStorage.setItem(LS,JSON.stringify(root));
+}
+</script>
+
+<!-- وحدة المسابقات: تُحقن داخل صفحة الحفظ تحت آخر شيء فيها -->
+<script type="text/plain" id="qsrc">
+const g=R.g,qz=document.getElementById('qz'),qtop=document.getElementById('qtop');
+const isAdmin=()=>document.body.classList.contains('edit');
+const names=()=>{try{return students.map(s=>s.name)}catch(e){return[]}};
+const ytId=u=>((String(u||'').match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/)||[])[1]);
+const okUrl=u=>/^https?:\/\//.test(u||'');
+const S={tab:'quiz',take:null,d:null,msg:'',pwf:false};
+const myName=()=>{try{return localStorage.getItem('rq-n-'+g)||''}catch(e){return''}};
+let stat=FB_URL?'':'وضع تجريبي: البيانات على هذا الجهاز فقط';
+
+const toText=qs=>qs.map(x=>x.q+'\n'+arr(x.o).map((o,i)=>(i===x.a?'* ':'- ')+o).join('\n')).join('\n\n');
+function parseQs(t){
+  const out=[];
+  for(const b of t.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean)){
+    const L=b.split('\n').map(s=>s.trim()).filter(Boolean),q=L.shift(),o=[];let a=-1;
+    L.forEach(l=>{o.push(l.replace(/^[-*]\s*/,''));if(l[0]==='*')a=o.length-1});
+    if(o.length<2||a<0)throw new Error('السؤال «'+q+'» يحتاج خيارين على الأقل وعلامة * قبل الإجابة الصحيحة');
+    out.push({q,o,a});
+  }
+  return out;
+}
+/* حفظ بيانات الطلاب (من صفحة الحفظ) */
+let tmr;window.__rqSave=v=>{clearTimeout(tmr);stat='جارٍ الحفظ…';topDraw();tmr=setTimeout(async()=>{try{await dbSet(`groups/${g}/data`,v);stat=FB_URL?'✓ تم الحفظ':'تم الحفظ محليًا'}catch(e){stat='⚠ تعذّر الحفظ، تحقق من الإنترنت'}topDraw()},700)};
+
+function topDraw(){
+  qtop.innerHTML=`<div class="qrow"><a class="qbtn" href="${esc(R.home)}" target="_top">‹ المجموعات</a><b>${esc(R.label)}</b>${isAdmin()?'<button data-q="pwf">🔑 كلمة السر</button>':''}<small>${esc(stat)}</small></div>`+(S.pwf&&isAdmin()?`<div class="card"><label>كلمة السر الحالية</label><input type="password" id="po"><label>كلمة السر الجديدة</label><input type="password" id="pn"><label>تأكيد كلمة السر الجديدة</label><input type="password" id="pc"><p class="qerr" id="pe" hidden></p><div class="qrow"><button class="primary" data-q="pwsave">تغيير</button><button data-q="pwx">إلغاء</button></div></div>`:'');
+}
+async function load(){
+  const [qs,rs]=await Promise.all([dbGet(`quizzes/${g}`),dbGet(`results/${g}`)]);
+  S.d={qz:Object.entries(qs||{}).map(([id,q])=>({id,...q,qs:arr(q.qs)})).sort((a,b)=>(a.ts||0)-(b.ts||0)),rs:rs||{}};
+}
+async function reload(){try{await load()}catch(e){S.msg='تعذّر الاتصال بالإنترنت، حاول مرة أخرى'}draw()}
+
+function nameBox(){
+  const n=myName(),st=names();
+  return `<div class="card"><label style="margin-top:0">اسمك</label>`+(st.length
+    ?`<select id="nm"><option value="">— اختر اسمك —</option>${st.map(s=>`<option ${s===n?'selected':''}>${esc(s)}</option>`).join('')}</select>`
+    :`<input id="nm" value="${esc(n)}" placeholder="اكتب اسمك ثم اضغط خارج الخانة">`)+`</div>`;
+}
+function qCard(q){
+  const n=myName(),r=n&&(S.d.rs[q.id]||{})[sk(n)],v=ytId(q.video);
+  let h=`<section class="card"><div class="top"><b>${esc(q.title)}</b><span class="qt ${q.open?'on':''}">${q.open?'مفتوحة':'مغلقة'}</span></div>`;
+  if(v)h+=`<div class="qvid"><iframe src="https://www.youtube.com/embed/${v}" allowfullscreen></iframe></div>`;
+  else if(okUrl(q.video))h+=`<p><a class="qbtn" href="${esc(q.video)}" target="_blank" rel="noopener">▶ شاهد الفيديو</a></p>`;
+  if(r)h+=`<p class="qok">✓ تم الحل — علامتك ${r.score} من ${r.total}</p>`;
+  else if(!q.open)h+='<p class="qsub">الأسئلة مغلقة حاليًا، يفتحها المشرف في وقتها.</p>';
+  else if(!n)h+='<p class="qsub">اختر اسمك أولًا.</p>';
+  else h+=`<button class="primary" data-q="start" data-id="${q.id}">ابدأ الأسئلة (${q.qs.length})</button>`;
+  return h+'</section>';
+}
+function aCard(q){
+  const rs=S.d.rs[q.id]||{},ks=Object.keys(rs);
+  return `<section class="card" data-id="${q.id}"><div class="top"><b>${esc(q.title)}</b><span class="qt ${q.open?'on':''}">${q.open?'مفتوحة':'مغلقة'}</span></div>
+  <label>العنوان</label><input class="t" value="${esc(q.title)}">
+  <label>رابط الفيديو</label><input class="v" value="${esc(q.video||'')}" placeholder="https://youtu.be/...">
+  <label>الأسئلة <small>(سطر فارغ بين كل سؤال، وضع * قبل الإجابة الصحيحة)</small></label>
+  <textarea class="qs" rows="10" placeholder="ما هو أول ما نزل من القرآن؟&#10;- الفاتحة&#10;* اقرأ&#10;- المدثر">${esc(toText(q.qs))}</textarea>
+  <div class="qrow" style="margin-top:10px"><button class="primary" data-q="sq">حفظ</button><button data-q="tg">${q.open?'⏸ إغلاق المسابقة':'▶ فتح المسابقة'}</button><button class="danger" data-q="dq">حذف</button></div>
+  ${ks.length?`<details><summary>النتائج (${ks.length})</summary>${ks.map(k=>`<div class="qrr">${esc(rs[k].name)}: ${rs[k].score}/${rs[k].total} <button class="mini" data-q="rs" data-k="${esc(k)}">إعادة السماح</button></div>`).join('')}</details>`:''}</section>`;
+}
+function rank(){
+  const {qz:Q,rs}=S.d,all=new Set(names());
+  Object.values(rs).forEach(m=>Object.values(m).forEach(r=>all.add(r.name)));
+  const rows=[...all].map(n=>{let t=0;const c=Q.map(q=>{const r=(rs[q.id]||{})[sk(n)];if(r)t+=r.score;return r?r.score:'–'});return{n,c,t}})
+    .sort((a,b)=>b.t-a.t||a.n.localeCompare(b.n,'ar'));
+  if(!rows.length)return'<p class="qsub">لا توجد نتائج بعد.</p>';
+  return `<div class="card" style="overflow-x:auto"><table class="qtb"><tr><th>الطالب</th>${Q.map(q=>`<th>${esc(q.title)}</th>`).join('')}<th>المجموع</th></tr>${rows.map(r=>`<tr><td>${esc(r.n)}</td>${r.c.map(x=>`<td>${x}</td>`).join('')}<td><b>${r.t}</b></td></tr>`).join('')}</table></div>`;
+}
+function takeView(){
+  const q=S.d.qz.find(x=>x.id===S.take);
+  return `<section class="card"><b>${esc(q.title)}</b>${q.qs.map((x,i)=>`<div><p><b>${i+1}. ${esc(x.q)}</b></p>${arr(x.o).map((o,j)=>`<label class="qop"><input type="radio" name="q${i}" value="${j}">${esc(o)}</label>`).join('')}</div>`).join('')}
+  <div class="qrow"><button class="primary" data-q="sub">إرسال الإجابات</button><button data-q="cancel">إلغاء</button></div></section>`;
+}
+function draw(){
+  const d=S.d,adm=isAdmin();
+  if(!d){qz.innerHTML='<p class="qsub">جارٍ تحميل المسابقات…</p>';return}
+  let h='<h2 style="margin:28px 0 10px">🏆 المسابقات</h2>';
+  if(S.msg){h+=`<p class="qnote">${esc(S.msg)}</p>`;S.msg=''}
+  if(S.take)h+=takeView();
+  else{
+    const tabs=adm?[['quiz','إدارة المسابقات'],['rank','الترتيب']]:[['quiz','المسابقات'],['rank','الترتيب']];
+    h+=`<div class="qrow" style="margin-bottom:12px">${tabs.map(([k,l])=>`<button data-q="tab" data-t="${k}" class="${S.tab===k?'qon':''}">${l}</button>`).join('')}</div>`;
+    if(S.tab==='rank')h+=rank();
+    else if(adm)h+=d.qz.map(aCard).join('')+'<button class="primary" data-q="nq">＋ مسابقة جديدة</button>';
+    else h+=nameBox()+(d.qz.length?d.qz.map(qCard).join(''):'<p class="qsub">لا توجد مسابقات بعد.</p>');
+  }
+  qz.innerHTML=h;
+}
+async function saveQuiz(card){
+  const id=card.dataset.id,q=S.d.qz.find(x=>x.id===id);let qs;
+  try{qs=parseQs(card.querySelector('.qs').value)}catch(e){S.msg=e.message;draw();return false}
+  await dbSet(`quizzes/${g}/${id}`,{title:card.querySelector('.t').value.trim()||'مسابقة',video:card.querySelector('.v').value.trim(),open:!!q.open,ts:q.ts||Date.now(),qs});
+  return true;
+}
+document.addEventListener('change',e=>{if(e.target.id==='nm'){try{localStorage.setItem('rq-n-'+g,e.target.value.trim())}catch(_){}draw()}});
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-q]');if(!b)return;const a=b.dataset.q,$=id=>document.getElementById(id);
+  try{
+    if(a==='pwf'){S.pwf=true;return topDraw()}
+    if(a==='pwx'){S.pwf=false;return topDraw()}
+    if(a==='pwsave'){
+      const err=m=>{$('pe').textContent=m;$('pe').hidden=false},o=$('po').value.trim(),nw=$('pn').value.trim(),c=$('pc').value.trim();
+      if(h53(o)!==R.pw)return err('كلمة السر الحالية غير صحيحة');
+      if(nw.length<4)return err('كلمة السر الجديدة قصيرة (4 أحرف على الأقل)');
+      if(nw!==c)return err('التأكيد غير مطابق للكلمة الجديدة');
+      await dbSet(`groups/${g}/pw`,h53(nw));alert('تم تغيير كلمة السر');return location.reload();
+    }
+    if(a==='tab'){S.tab=b.dataset.t;return draw()}
+    if(a==='cancel'){S.take=null;return draw()}
+    if(a==='start'){S.take=b.dataset.id;return draw()}
+    if(a==='sub'){
+      const q=S.d.qz.find(x=>x.id===S.take),n=myName(),ans=q.qs.map((_,i)=>{const r=qz.querySelector(`input[name=q${i}]:checked`);return r?+r.value:-1});
+      if(ans.includes(-1)){S.msg='أجب عن كل الأسئلة قبل الإرسال';return draw()}
+      const open=await dbGet(`quizzes/${g}/${q.id}/open`),prev=await dbGet(`results/${g}/${q.id}/${sk(n)}`);
+      S.take=null;
+      if(!open)S.msg='أُغلقت المسابقة قبل الإرسال';
+      else if(prev)S.msg='لقد أرسلت إجاباتك سابقًا';
+      else{
+        const score=ans.reduce((s,x,i)=>s+(x===q.qs[i].a?1:0),0);
+        await dbSet(`results/${g}/${q.id}/${sk(n)}`,{name:n,score,total:q.qs.length,ts:Date.now()});
+        S.msg=`تم الإرسال. علامتك ${score} من ${q.qs.length}`;
+      }
+      return reload();
+    }
+    if(!isAdmin())return;
+    const card=b.closest('[data-id]'),id=card&&card.dataset.id;
+    if(a==='nq'){await dbSet(`quizzes/${g}/q${Date.now()}`,{title:'مسابقة جديدة',video:'',open:false,ts:Date.now(),qs:[]});return reload()}
+    if(a==='sq'){if(await saveQuiz(card))S.msg='تم الحفظ';return reload()}
+    if(a==='tg'){if(!(await saveQuiz(card)))return;const q=S.d.qz.find(x=>x.id===id);await dbSet(`quizzes/${g}/${id}/open`,!q.open);return reload()}
+    if(a==='dq'){if(confirm('حذف المسابقة ونتائجها؟')){await dbSet(`quizzes/${g}/${id}`,null);await dbSet(`results/${g}/${id}`,null);return reload()}return}
+    if(a==='rs'){await dbSet(`results/${g}/${id}/${b.dataset.k}`,null);return reload()}
+  }catch(err){S.msg='تعذّر الاتصال بالإنترنت، حاول مرة أخرى';draw()}
+});
+let was=isAdmin();setInterval(()=>{const a=isAdmin();if(a!==was){was=a;S.pwf=false;S.tab='quiz';topDraw();draw()}},500);
+topDraw();draw();reload();
+</script>
+
+<script>
+(()=>{
+const FB_URL='';   /* رابط Firebase Realtime Database بدون / في النهاية، مثال: https://اسم-المشروع-default-rtdb.firebaseio.com */
+const OLD='index.html';   /* صفحتك القديمة كما هي، بدون تغيير اسمها */
+const GROUPS=['3_4','5_6','7_8','9','10_11'];
+const OLDPW=4140592658733146;   /* كلمة السر الحالية: تبقى لكل مجموعة إلى أن تغيّرها */
+const gl=g=>g.includes('_')?'الصفوف '+g.replace('_',' – '):'الصف '+g;
+const DBSRC=document.getElementById('dbsrc').textContent,QSRC=document.getElementById('qsrc').textContent;
+const DB={async dbGet(p){
+  if(FB_URL){const r=await fetch(FB_URL+'/'+p+'.json');if(!r.ok)throw new Error('net');return r.json()}
+  try{let o=JSON.parse(localStorage.getItem('rq-db'))||{};for(const k of p.split('/')){if(o==null||typeof o!=='object')return null;o=o[k]}return o===undefined?null:o}catch(e){return null}
+}};
+window.onerror=m=>{const h=document.getElementById('home');if(h)h.innerHTML='<p class="demo">حدث خطأ: '+String(m)+'</p>'};
+const home=document.getElementById('home');
+const g=new URLSearchParams(location.search).get('g');
+
+/* تعديل صفحة الحفظ القديمة (old.html) لتصير خاصة بمجموعة، وإضافة المسابقات */
+function patch(html,g,hash,data){
+  const rq=JSON.stringify({g,label:gl(g),fb:FB_URL,pw:hash,home:location.pathname}).replace(/</g,'\\u003c');
+  const qjs='(function(){const R=window.__RQ,FB_URL=R.fb;'+DBSRC+'\n'+QSRC+'\n})();';
+  const css='#pub{display:none}body.detailing #qz,body.detailing #qtop{display:none}#qtop{margin:6px 0 10px}.qrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.qbtn{display:inline-block;text-decoration:none;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 14px}#qz label,#qtop label{display:block;font-weight:700;margin:10px 0 4px}#qz input,#qz select,#qz textarea,#qtop input{width:100%;font:inherit;padding:8px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}#qz label.qop{font-weight:400;margin:4px 0;padding:8px 10px;border:1px solid var(--line);border-radius:10px}#qz label.qop input{width:auto;margin-left:8px}.qt{border-radius:99px;padding:0 12px;font-size:.85rem;border:1.5px solid var(--line);color:var(--muted)}.qt.on{background:var(--green);color:var(--bg);border-color:var(--green)}.qon{background:var(--brass)!important;color:#fff!important;border-color:var(--brass)!important}.qvid{position:relative;padding-top:56.25%;margin:10px 0}.qvid iframe{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:12px}.qok{color:var(--green);font-weight:700}.qsub,#qz small,#qtop small{color:var(--muted);font-weight:400}.qnote{background:var(--green);color:var(--bg);border-radius:12px;padding:8px 14px}.qerr{color:#b3352b;font-weight:700}.qrr{padding:4px 0;border-bottom:1px dashed var(--line)}.qtb{border-collapse:collapse;width:100%}.qtb th,.qtb td{border-bottom:1px solid var(--line);padding:6px 10px;text-align:center;white-space:nowrap}.qtb td:first-child,.qtb th:first-child{text-align:right}';
+  return html
+    .replace(/const KEY = '[^']*';/g,`const KEY = 'quran-competition-v1-${g}';`)
+    .replace(/const PW_H\s*=\s*\d+;/g,`const PW_H = ${hash};`)
+    .replace(/'hifz-unlocked'/g,`'hifz-unlocked-${g}'`)
+    .replace(/const store = \{[\s\S]*?\n\};/g,()=>'const store={get(){return null},set(v){try{window.__rqSave&&window.__rqSave(v)}catch(e){}}};')
+    .replace(/\/\*D\*\/[\s\S]*?\/\*E\*\//g,()=>'/*D*/'+data+'/*E*/')
+    .replace('<head>',()=>'<head><script>window.__RQ='+rq+'<\/script>')
+    .replace('</style>',()=>css+'</style>')
+    .replace('<div class="wrap">',()=>'<div class="wrap"><div id="qtop"></div>')
+    .replace(/(<div class="head-btns">[\s\S]*?<\/div>)(\s*<\/div>\s*<script>)/,(m,a,b)=>a+'<section id="qz"></section>'+b)
+    .replace('<script type="text/plain" id="tpl">',()=>'<script>'+qjs+'<\/script>\n<script type="text/plain" id="tpl">');
+}
+window.__patchTest=patch;
+
+async function open(g){
+  home.innerHTML='<p>جارٍ التحميل…</p>';
+  try{
+    const html=await fetch(OLD).then(r=>{if(!r.ok)throw new Error('old');return r.text()},()=>{throw new Error('old')});
+    let data,pw;
+    try{[data,pw]=await Promise.all([DB.dbGet(`groups/${g}/data`),DB.dbGet(`groups/${g}/pw`)])}catch(e){throw new Error('db')}
+    let d='[]';try{if(typeof data==='string'&&Array.isArray(JSON.parse(data)))d=data.replace(/</g,'\\u003c')}catch(e){}
+    const fr=document.createElement('iframe');
+    fr.setAttribute('allow','clipboard-write');
+    fr.style.cssText='position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff';
+    fr.srcdoc=patch(html,g,pw||OLDPW,d);
+    document.body.style.padding='0';home.hidden=true;document.body.appendChild(fr);
+  }catch(e){
+    const m=e.message==='old'?'ما قدرت أفتح صفحتك القديمة (index.html). تأكد أنك تفتح الموقع من رابط GitHub وليس من معاينة كلود أو من الملف مباشرة، وأن index.html القديم ما انحذف.'
+      :e.message==='db'?'تعذّر الاتصال بقاعدة البيانات (Firebase). تأكد من رابط FB_URL ومن أن قواعد القراءة والكتابة مفتوحة.'
+      :'حدث خطأ: '+e.message;
+    home.innerHTML='<p class="demo">'+m+'</p><p><a href="'+location.pathname+'">رجوع</a></p>';
+  }
+}
+
+function showHome(){
+  home.innerHTML=`<img id="ban" class="ban" alt="مسابقة رتِّل وارتق" src="banner.jpg"><h2>اختر مجموعتك</h2><div class="gg">${GROUPS.map(x=>`<a class="gb" href="?g=${x}">${gl(x)}</a>`).join('')}</div>${FB_URL?'':'<p class="demo">وضع تجريبي: البيانات محفوظة على هذا الجهاز فقط. اربط Firebase ليراها الجميع.</p>'}`;
+  const ban=document.getElementById('ban');
+  ban.onerror=()=>{ban.onerror=null;fetch(OLD).then(r=>r.text()).then(t=>{const m=t.match(/class="banner-img"[^>]*src="(data:image[^"]+)"/);if(m)ban.src=m[1];else ban.hidden=true}).catch(()=>{ban.hidden=true})};
+}
+if(GROUPS.includes(g))open(g);else showHome();
+})();
+</script>
+</body>
+</html>
